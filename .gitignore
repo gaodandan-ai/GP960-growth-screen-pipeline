@@ -1,0 +1,48 @@
+# Raw experimental data and generated analysis outputs
+data/raw/
+data/results/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Local secrets and machine-specific config
+.env
+.env.*
+*.secret
+*secret*
+*token*
+*password*
+id_rsa*
+*.pem
+*.key
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+
+# Large/generated binary outputs
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.xlsx
+*.xls
+
+# Keep documentation/configuration assets
+!config/
+!config/*.png
