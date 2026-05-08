@@ -2,7 +2,8 @@
 # step1: pp_rawdata.py
 python ../data_processing/triple_replicate/01.pp_rawdata.py \
     --rawdata_dir ../../data/raw/triple_replicate/xianyang_k \
-    --plate_file ../../data/raw/triple_replicate/knockout_plate_gene_mapping.xlsx \  #写死，不要tab改这个
+    #写死，不要tab改mapping文件
+    --plate_file ../../data/raw/triple_replicate/knockout_plate_gene_mapping.xlsx \
     --result_dir ../../data/results/triple_replicate/xianyang_k/01.ppraw_data \
     --c1_label nonstress \
     --c2_label stress
@@ -11,7 +12,8 @@ python ../data_processing/triple_replicate/01.pp_rawdata.py \
 python ../data_processing/triple_replicate/02.data_cleaning.py \
     --input_dir ../../data/results/triple_replicate/xianyang_k/01.ppraw_data \
     --output_dir ../../data/results/triple_replicate/xianyang_k/02.cleaned_data \
-    --mapping_file ../../data/raw/triple_replicate/knockout_plate_gene_mapping.xlsx \
+    #这里也写死
+    --mapping_file ../../data/raw/triple_replicate/knockout_plate_gene_mapping.xlsx \ 
     --threshold 0
 
 ## step3: calculate_fitness.py
