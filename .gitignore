@@ -46,3 +46,4 @@ id_rsa*
 # Keep documentation/configuration assets
 !config/
 !config/*.png
+.vscode/
