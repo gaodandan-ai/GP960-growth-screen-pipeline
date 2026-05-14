@@ -31,22 +31,29 @@ def normalize_column_names(df, condition):
     DataFrame: 标准化列名后的数据框
     """
     if condition in ['con_stress', 'con_nonstress']:
-        # Control条件文件的列名格式: ctrol1-Cgl0419;Cgl1715;...
-        # 需要为每个基因创建单独的列
+        # Control条件文件的列名格式: ctrol1-Cgl0419;Cgl1715;... 或 ctrol-VC
         new_df_data = {}
+        vc_data = None
         
         for col in df.columns:
-            if '-' in col and ';' in col:
-                # 提取基因ID部分 (去掉ctrol1-前缀，分割分号分隔的基因)
-                gene_part = col.split('-', 1)[1]  # 去掉ctrol1-前缀
-                genes = gene_part.split(';')  # 分割基因
-                
-                # 为每个基因创建一个列，数据相同
-                for gene in genes:
-                    if gene.strip():  # 确保基因名不为空
-                        new_df_data[gene.strip()] = df[col].values
-            else:
-                new_df_data[col] = df[col].values
+            if 'VC' in col:
+                vc_data = df[col].values
+                new_df_data[col] = vc_data
+            
+            if '-' in col:
+                # 提取基因ID部分
+                gene_part = col.split('-', 1)[1]
+                if ';' in gene_part:
+                    genes = gene_part.split(';')
+                    for gene in genes:
+                        if gene.strip():
+                            new_df_data[gene.strip()] = df[col].values
+                else:
+                    # 单个基因或 VC
+                    new_df_data[gene_part.strip()] = df[col].values
+        
+        # 如果有 VC 数据，但某些基因没有对应列，可以在这里处理
+        # 但通常绘图时会检查，所以这里保证 VC 列存在即可
         
         # 创建新的DataFrame
         new_df = pd.DataFrame(new_df_data, index=df.index)
@@ -81,8 +88,8 @@ def load_time_series_data(data_dir):
             df = pd.read_csv(file_path, index_col=0)
             # 标准化列名
             df = normalize_column_names(df, condition)
-            # 将时间从分钟转换为小时
-            df.index = df.index / 60.0
+            # 时间已经是小时，不需要转换
+            df.index = df.index
             
             data_dict[condition] = df
             print(f"已加载 {condition} 数据: {df.shape}, 时间范围: {df.index.min():.1f}-{df.index.max():.1f}小时")
@@ -122,10 +129,9 @@ def plot_gene_growth_curves(data_dict, gene_list, output_dir, time_max, title='G
     data_dict (dict): 包含四种条件数据的字典
     gene_list (list): 要绘制的基因列表
     output_dir (str): 输出目录路径
-    time_max (float): 最大显示时间
     title (str): 图标题
     output_name (str): 输出文件名（含扩展名）
-    gene_map (dict): 基因ID到基因名称的映射
+    gene_map (dict): 基因ID到名称的映射
     """
     # 条件标签和颜色映射
     condition_labels = {
@@ -165,15 +171,28 @@ def plot_gene_growth_curves(data_dict, gene_list, output_dir, time_max, title='G
                 ax = axes[i]
                 curves_plotted = 0
                 for condition, label in condition_labels.items():
-                    if condition in data_dict and gene in data_dict[condition].columns:
-                        time_points = data_dict[condition].index.values
-                        od_values = data_dict[condition][gene].values
-                        ax.plot(time_points, od_values,
-                                color=condition_colors[condition],
-                                label=label,
-                                linewidth=2,
-                                alpha=0.8)
-                        curves_plotted += 1
+                    if condition in data_dict:
+                        col_name = None
+                        if not condition.startswith('con_'):
+                            # 突变株组找基因名
+                            if gene in data_dict[condition].columns:
+                                col_name = gene
+                        else:
+                            # 控制组统一找 VC
+                            for col in data_dict[condition].columns:
+                                if 'VC' in col:
+                                    col_name = col
+                                    break
+                        
+                        if col_name:
+                            time_points = data_dict[condition].index.values
+                            od_values = data_dict[condition][col_name].values
+                            ax.plot(time_points, od_values,
+                                    color=condition_colors[condition],
+                                    label=label,
+                                    linewidth=2,
+                                    alpha=0.8)
+                            curves_plotted += 1
                 
                 # 设置标题，包含基因名（如果有）
                 display_name = gene
@@ -207,7 +226,7 @@ def main():
     parser.add_argument('--analysis_dir', type=str, required=True,
                         help='分析结果目录(03.stress_tolerance_analysis)')
     parser.add_argument('--time_max', type=float, default=25.0,
-                        help='最大显示时间（小时），默认25')
+                        help='绘制的时间范围(小时)，默认25')
     parser.add_argument('--mapping_file', type=str, default=None,
                         help='基因映射文件路径 (Excel)')
     args = parser.parse_args()
@@ -222,7 +241,6 @@ def main():
     if args.mapping_file and Path(args.mapping_file).exists():
         try:
             df_map = pd.read_excel(args.mapping_file)
-            # 自动识别列名
             tag_col = None
             name_col = None
             for col in df_map.columns:

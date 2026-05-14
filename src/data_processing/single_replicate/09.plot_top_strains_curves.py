@@ -64,7 +64,7 @@ def load_time_series_data(data_dir):
             print(f"Warning: {filename} not found")
     return data_dict
 
-def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, output_name='top_strains_curves_by_feature.pdf'):
+def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, output_name='top_strains_curves_by_feature.pdf', gene_map={}):
     output_path = Path(output_dir) / output_name
     
     # 读取筛选结果
@@ -124,8 +124,13 @@ def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, output_name=
                                 label=label, linewidth=2, alpha=0.8)
                         curves_found = True
                 
+                # Title with Gene Name if available
+                display_name = gene
+                if gene in gene_map and pd.notna(gene_map[gene]):
+                    display_name = f"{gene} ({gene_map[gene]})"
+                
                 # Title: Gene (Rank X)
-                title = f"{gene} (Rank {rank})\nRF = {rf_val:.2f}"
+                title = f"{display_name} (Rank {rank})\nRF = {rf_val:.2f}"
                 ax.set_title(title, fontsize=12, fontweight='bold')
                 ax.set_xlabel('Time (h)')
                 ax.set_ylabel('OD600')
@@ -154,16 +159,33 @@ def main():
     parser.add_argument('--input_dir', type=str, required=True, help='Path to cleaned data directory (02.cleaned_data)')
     parser.add_argument('--top5_file', type=str, required=True, help='Path to top5_strains_per_feature.csv')
     parser.add_argument('--output_dir', type=str, required=True)
+    parser.add_argument('--mapping_file', type=str, default=None, help='Excel file containing gene mapping')
     args = parser.parse_args()
     
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Load mapping
+    gene_map = {}
+    if args.mapping_file and Path(args.mapping_file).exists():
+        try:
+            df_map = pd.read_excel(args.mapping_file)
+            tag_col = None
+            name_col = None
+            for col in df_map.columns:
+                if col.lower() in ['old_locus_tag', 'gene', 'id']: tag_col = col
+                if col.lower() in ['gene_name', 'name']: name_col = col
+            if tag_col and name_col:
+                gene_map = pd.Series(df_map[name_col].values, index=df_map[tag_col]).to_dict()
+                print(f"Loaded {len(gene_map)} gene mappings")
+        except Exception as e:
+            print(f"Error loading mapping file: {e}")
+
     # 1. Load Data
     data_dict = load_time_series_data(args.input_dir)
     
     # 2. Plot
-    plot_growth_curves_by_feature(data_dict, args.top5_file, output_dir)
+    plot_growth_curves_by_feature(data_dict, args.top5_file, output_dir, gene_map=gene_map)
 
 if __name__ == "__main__":
     main()

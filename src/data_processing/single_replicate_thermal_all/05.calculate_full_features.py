@@ -411,7 +411,6 @@ def calc_curve_features(time: np.ndarray, od: np.ndarray) -> dict:
                 exp_R2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else nan
 
     fit = _fit_gompertz(t, y)
-    # fit 返回 model_A, model_shape, fit_RMSE, AIC, BIC
 
     return {
         "max_mu": max_mu,
@@ -427,7 +426,7 @@ def calc_curve_features(time: np.ndarray, od: np.ndarray) -> dict:
         "t90": t90,
         "time_max_mu": time_max_mu,
         "OD_max_mu": OD_max_mu,
-        "time_max_OD": time_max_OD,
+        "time_max_OD / t_peak": time_max_OD,
         "t_exp_start": exp_start,
         "t_exp_end": t_exp_end,
         "Exp_phase_length": Exp_phase_length,
@@ -449,11 +448,10 @@ def calc_curve_features(time: np.ndarray, od: np.ndarray) -> dict:
         "n_phases": n_phases,
         "second_mu_max": second_mu_max,
         "diauxic_lag": diauxic_lag,
-        "model_A": fit.get("model_A", nan),
-        "model_shape": fit.get("model_shape", nan),
+        "model_A (asymptote)": fit.get("model_A", nan),
+        "model_shape (ν, etc.)": fit.get("model_shape", nan),
         "fit_RMSE": fit.get("fit_RMSE", nan),
-        "AIC": fit.get("AIC", nan),
-        "BIC": fit.get("BIC", nan),
+        "AIC / BIC": fit.get("AIC", fit.get("BIC", nan)),
         "OD_centroid_time": OD_centroid_time,
         "OD_time_skewness": OD_time_skewness,
         "persistence_time": persistence_time,
@@ -464,7 +462,7 @@ def calc_curve_features(time: np.ndarray, od: np.ndarray) -> dict:
         "late_OD_slope": late_OD_slope,
         "exp_OD_gain": exp_OD_gain,
         "exp_fit_R2": exp_R2,
-        "initial_mu": initial_mu,
+        "initial_mu (μ₀)": initial_mu,
         "Lag_cost_index": float(lag_phase * max_mu) if np.isfinite(lag_phase) and np.isfinite(max_mu) else nan,
         "t_peak_from_start": float(t_peak - t_min) if np.isfinite(t_peak) else nan,
         "doubling_time_min": doubling_time_min,
@@ -480,37 +478,30 @@ class FullFeatureAnalyzer:
     def load_data(self, time_max_h=None):
         print("Loading cleaned data...")
         cleaned_data_dir = self.data_dir
-        self.mutant_stress   = pd.read_csv(cleaned_data_dir / "mutant_stress_OD_cleaned.csv",   index_col=0)
-        self.mutant_nonstress = pd.read_csv(cleaned_data_dir / "mutant_nonstress_OD_cleaned.csv", index_col=0)
-        self.ctrl_stress     = pd.read_csv(cleaned_data_dir / "Ctrol_stress_OD_cleaned.csv",     index_col=0)
-        self.ctrl_nonstress  = pd.read_csv(cleaned_data_dir / "Ctrol_nonstress_OD_cleaned.csv",  index_col=0)
+        self.mutant_stress = pd.read_csv(cleaned_data_dir / f"01.mutant_stress_OD_cleaned.csv", index_col=0)
+        self.mutant_nonstress = pd.read_csv(cleaned_data_dir / f"02.mutant_nonstress_OD_cleaned.csv", index_col=0)
+        self.ctrl_stress = pd.read_csv(cleaned_data_dir / f"03.Ctrol_stress_OD_cleaned.csv", index_col=0)
+        self.ctrl_nonstress = pd.read_csv(cleaned_data_dir / f"04.Ctrol_nonstress_OD_cleaned.csv", index_col=0)
         
         # 统一时间截断
         if time_max_h is not None:
-            time_max_min = time_max_h * 60.0
-            print(f"Applying time cut-off: {time_max_h} hours ({time_max_min} min)")
-            self.mutant_stress = self.mutant_stress[self.mutant_stress.index <= time_max_min]
-            self.mutant_nonstress = self.mutant_nonstress[self.mutant_nonstress.index <= time_max_min]
-            self.ctrl_stress = self.ctrl_stress[self.ctrl_stress.index <= time_max_min]
-            self.ctrl_nonstress = self.ctrl_nonstress[self.ctrl_nonstress.index <= time_max_min]
-
-        # 统一 strip 列名，避免列名含多余空格导致匹配失败
-        for df in [self.mutant_stress, self.mutant_nonstress, self.ctrl_stress, self.ctrl_nonstress]:
-            df.columns = df.columns.str.strip()
+            print(f"Applying time cut-off: {time_max_h} hours")
+            self.mutant_stress = self.mutant_stress[self.mutant_stress.index <= time_max_h]
+            self.mutant_nonstress = self.mutant_nonstress[self.mutant_nonstress.index <= time_max_h]
+            self.ctrl_stress = self.ctrl_stress[self.ctrl_stress.index <= time_max_h]
+            self.ctrl_nonstress = self.ctrl_nonstress[self.ctrl_nonstress.index <= time_max_h]
         
         self.time_points = self.mutant_stress.index.values.astype(float)
-        self.time_h = self.time_points / 60.0
+        # 时间已经是小时，不需要转换
+        self.time_h = self.time_points
         
-        self.genes = list(self.mutant_stress.columns)
-        print(f"Loaded {len(self.genes)} genes, {len(self.time_points)} time points (0-{self.time_points[-1]} min).")
+        self.genes = [col.strip() for col in self.mutant_stress.columns]
+        print(f"Loaded {len(self.genes)} genes, {len(self.time_points)} time points (0-{self.time_points[-1]:.1f} h).")
 
     def find_control_column(self, gene):
-        """查找基因对应的对照组列名（精确匹配，避免子字符串误匹配）"""
-        gene = gene.strip()
+        """查找通用 VC (Vector Control) 对照组"""
         for col in self.ctrl_stress.columns:
-            col_gene_part = col.split('-', 1)[-1] if '-' in col else col
-            col_genes = [g.strip() for g in col_gene_part.split(';')]
-            if gene in col_genes:
+            if 'VC' in col:
                 return col
         return None
 
@@ -531,7 +522,7 @@ class FullFeatureAnalyzer:
             if i % 100 == 0:
                 print(f"Processing {i}/{total}...")
                 
-            gene_col = gene
+            gene_col = gene + '  ' if gene + '  ' in self.mutant_stress.columns else gene
             if gene_col not in self.mutant_stress.columns:
                 continue
                 

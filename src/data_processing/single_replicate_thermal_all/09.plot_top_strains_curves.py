@@ -1,6 +1,7 @@
+
 #!/usr/bin/env python3
 """
-09.plot_top_strains_curves.py
+12.plot_top_strains_curves.py
 绘制各特征Top 5菌株的生长曲线。
 每个特征的Top 5画在一起，即使有重复也重复画。
 """
@@ -26,24 +27,18 @@ def normalize_column_names(df, condition):
     if condition in ['con_stress', 'con_nonstress']:
         new_df_data = {}
         for col in df.columns:
-            # 检查是否包含分号（多个基因）
-            if ';' in col:
-                if '-' in col:
-                    gene_part = col.split('-', 1)[1]
-                else:
-                    gene_part = col
-                genes = gene_part.split(';')
-                for gene in genes:
-                    if gene.strip():
-                        new_df_data[gene.strip()] = df[col].values
-            # 检查是否有前缀（单基因情况，如 ctrol-gene）
-            elif '-' in col:
-                gene_part = col.split('-', 1)[1]
-                if gene_part.strip():
-                     new_df_data[gene_part.strip()] = df[col].values
-            # 其他情况（纯基因名）
-            else:
+            if 'VC' in col:
                 new_df_data[col] = df[col].values
+            
+            if '-' in col:
+                gene_part = col.split('-', 1)[1]
+                if ';' in gene_part:
+                    genes = gene_part.split(';')
+                    for gene in genes:
+                        if gene.strip():
+                            new_df_data[gene.strip()] = df[col].values
+                else:
+                    new_df_data[gene_part.strip()] = df[col].values
         new_df = pd.DataFrame(new_df_data, index=df.index)
         return new_df
     return df
@@ -53,10 +48,10 @@ def load_time_series_data(data_dir):
     加载四种条件下的时间序列OD数据
     """
     data_files = {
-        'mut_stress': 'mutant_stress_OD_cleaned.csv',
-        'mut_nonstress': 'mutant_nonstress_OD_cleaned.csv', 
-        'con_stress': 'Ctrol_stress_OD_cleaned.csv',
-        'con_nonstress': 'Ctrol_nonstress_OD_cleaned.csv'
+        'mut_stress': '01.mutant_stress_OD_cleaned.csv',
+        'mut_nonstress': '02.mutant_nonstress_OD_cleaned.csv', 
+        'con_stress': '03.Ctrol_stress_OD_cleaned.csv',
+        'con_nonstress': '04.Ctrol_nonstress_OD_cleaned.csv'
     }
     
     data_dict = {}
@@ -65,15 +60,15 @@ def load_time_series_data(data_dir):
         if file_path.exists():
             df = pd.read_csv(file_path, index_col=0)
             df = normalize_column_names(df, condition)
-            # 时间转小时
-            df.index = df.index / 60.0
+            # 时间已经是小时，不需要转换
+            df.index = df.index
             data_dict[condition] = df
             print(f"Loaded {condition}: {df.shape}")
         else:
             print(f"Warning: {filename} not found")
     return data_dict
 
-def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, output_name='top_strains_curves_by_feature.pdf', time_max=48, gene_map={}):
+def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, time_max, output_name='top_strains_curves_by_feature.pdf', gene_map={}):
     output_path = Path(output_dir) / output_name
     
     # 读取筛选结果
@@ -125,13 +120,26 @@ def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, output_name=
                 # Plot lines
                 curves_found = False
                 for condition, label in condition_labels.items():
-                    if condition in data_dict and gene in data_dict[condition].columns:
-                        time_points = data_dict[condition].index.values
-                        od_values = data_dict[condition][gene].values
-                        ax.plot(time_points, od_values,
-                                color=condition_colors[condition],
-                                label=label, linewidth=2, alpha=0.8)
-                        curves_found = True
+                    if condition in data_dict:
+                        col_name = None
+                        if not condition.startswith('con_'):
+                            # 突变株组找基因名
+                            if gene in data_dict[condition].columns:
+                                col_name = gene
+                        else:
+                            # 控制组统一找 VC
+                            for col in data_dict[condition].columns:
+                                if 'VC' in col:
+                                    col_name = col
+                                    break
+                        
+                        if col_name:
+                            time_points = data_dict[condition].index.values
+                            od_values = data_dict[condition][col_name].values
+                            ax.plot(time_points, od_values,
+                                    color=condition_colors[condition],
+                                    label=label, linewidth=2, alpha=0.8)
+                            curves_found = True
                 
                 # Title with Gene Name if available
                 display_name = gene
@@ -143,8 +151,9 @@ def plot_growth_curves_by_feature(data_dict, top5_file, output_dir, output_name=
                 ax.set_title(title, fontsize=12, fontweight='bold')
                 ax.set_xlabel('Time (h)')
                 ax.set_ylabel('OD600')
-                ax.set_xlim(0, time_max)
                 ax.grid(True, alpha=0.3)
+                ax.set_xlim(0, time_max)
+                ax.set_ylim(0, None)
                 
                 if not curves_found:
                     ax.text(0.5, 0.5, "Data Not Found", ha='center', va='center')
@@ -169,7 +178,7 @@ def main():
     parser.add_argument('--input_dir', type=str, required=True, help='Path to cleaned data directory (02.cleaned_data)')
     parser.add_argument('--top5_file', type=str, required=True, help='Path to top5_strains_per_feature.csv')
     parser.add_argument('--output_dir', type=str, required=True)
-    parser.add_argument('--time_max', type=float, default=48.0, help='Max time to plot (hours)')
+    parser.add_argument('--time_max', type=float, default=25.0)
     parser.add_argument('--mapping_file', type=str, default=None, help='Excel file containing gene mapping')
     args = parser.parse_args()
     
@@ -196,7 +205,7 @@ def main():
     data_dict = load_time_series_data(args.input_dir)
     
     # 2. Plot
-    plot_growth_curves_by_feature(data_dict, args.top5_file, output_dir, time_max=args.time_max)
+    plot_growth_curves_by_feature(data_dict, args.top5_file, output_dir, args.time_max, gene_map=gene_map)
 
 if __name__ == "__main__":
     main()

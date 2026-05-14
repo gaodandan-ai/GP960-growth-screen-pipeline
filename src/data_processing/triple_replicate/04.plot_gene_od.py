@@ -128,7 +128,7 @@ def get_all_genes(result_dir, kind='stress'):
         print(f"警告: 文件 {file_path} 不存在")
         return []
 
-def plot_gene_growth_curves(data_dict, gene_list, output_dir, title='Genes Growth Curves', output_name='genes_growth_curves.pdf', chunk_size=20, n_cols_max=5, dpi=150, time_max=48):
+def plot_gene_growth_curves(data_dict, gene_list, output_dir, title='Genes Growth Curves', output_name='genes_growth_curves.pdf', chunk_size=20, n_cols_max=5, dpi=150, time_max=48, gene_map={}):
     """
     绘制指定基因在四种条件下的生长曲线（动态子图布局）
     
@@ -139,6 +139,7 @@ def plot_gene_growth_curves(data_dict, gene_list, output_dir, title='Genes Growt
     title (str): 图标题
     output_name (str): 输出文件名（含扩展名）
     time_max (float): 最大显示时间（小时）
+    gene_map (dict): 基因ID到名称的映射
     """
     # 条件标签和颜色映射
     condition_labels = {
@@ -187,7 +188,13 @@ def plot_gene_growth_curves(data_dict, gene_list, output_dir, title='Genes Growt
                                 linewidth=2,
                                 alpha=0.8)
                         curves_plotted += 1
-                ax.set_title(f'{gene}', fontsize=12, fontweight='bold')
+                
+                # 设置标题，包含基因名（如果有）
+                display_name = gene
+                if gene in gene_map and pd.notna(gene_map[gene]):
+                    display_name = f"{gene} ({gene_map[gene]})"
+                
+                ax.set_title(f'{display_name}', fontsize=12, fontweight='bold')
                 ax.set_xlabel('Time (h)', fontsize=10)
                 ax.set_ylabel('OD600', fontsize=10)
                 ax.grid(True, alpha=0.3)
@@ -215,6 +222,8 @@ def main():
                         help='分析结果目录(03.stress_tolerance_analysis)')
     parser.add_argument('--time_max', type=float, default=48.0,
                         help='最大显示时间（小时），默认48小时')
+    parser.add_argument('--mapping_file', type=str, default=None,
+                        help='基因映射文件路径 (Excel)')
     args = parser.parse_args()
 
     # 设置路径
@@ -222,6 +231,22 @@ def main():
     result_dir = Path(args.analysis_dir)
     output_dir = Path(args.output_dir)
     
+    # 加载映射
+    gene_map = {}
+    if args.mapping_file and Path(args.mapping_file).exists():
+        try:
+            df_map = pd.read_excel(args.mapping_file)
+            tag_col = None
+            name_col = None
+            for col in df_map.columns:
+                if col.lower() in ['old_locus_tag', 'gene', 'id']: tag_col = col
+                if col.lower() in ['gene_name', 'name']: name_col = col
+            if tag_col and name_col:
+                gene_map = pd.Series(df_map[name_col].values, index=df_map[tag_col]).to_dict()
+                print(f"加载了 {len(gene_map)} 个基因映射")
+        except Exception as e:
+            print(f"加载映射文件失败: {e}")
+
     # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -254,7 +279,8 @@ def main():
         data_dict, stress_all, output_dir,
         title='ALL Stress-Tolerant Genes Growth Curves',
         output_name='all_stress_tolerant_genes_growth_curves.pdf',
-        time_max=args.time_max
+        time_max=args.time_max,
+        gene_map=gene_map
     )
     
     # 4. 绘制nonstress all综合生长曲线图（PDF）
@@ -263,7 +289,8 @@ def main():
         data_dict, nonstress_all, output_dir,
         title='ALL Non-stress Tolerant Genes Growth Curves',
         output_name='all_nonstress_tolerant_genes_growth_curves.pdf',
-        time_max=args.time_max
+        time_max=args.time_max,
+        gene_map=gene_map
     )
     
     print("\n=== 生长曲线绘制完成 ===")

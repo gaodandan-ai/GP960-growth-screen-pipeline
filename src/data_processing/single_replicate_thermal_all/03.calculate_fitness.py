@@ -46,33 +46,30 @@ class StressToleranceAnalyzer:
         """加载数据并根据 time_max_h 进行时间截断"""
         print("正在加载清理后的数据...")
         
+        # 加载四个清理后的数据文件
         cleaned_data_dir = self.data_dir
-        self.mutant_stress   = pd.read_csv(cleaned_data_dir / "mutant_stress_OD_cleaned.csv",   index_col=0)
-        self.mutant_nonstress = pd.read_csv(cleaned_data_dir / "mutant_nonstress_OD_cleaned.csv", index_col=0)
-        self.ctrl_stress     = pd.read_csv(cleaned_data_dir / "Ctrol_stress_OD_cleaned.csv",     index_col=0)
-        self.ctrl_nonstress  = pd.read_csv(cleaned_data_dir / "Ctrol_nonstress_OD_cleaned.csv",  index_col=0)
+        self.mutant_stress = pd.read_csv(cleaned_data_dir / f"01.mutant_stress_OD_cleaned.csv", index_col=0)
+        self.mutant_nonstress = pd.read_csv(cleaned_data_dir / f"02.mutant_nonstress_OD_cleaned.csv", index_col=0)
+        self.ctrl_stress = pd.read_csv(cleaned_data_dir / f"03.Ctrol_stress_OD_cleaned.csv", index_col=0)
+        self.ctrl_nonstress = pd.read_csv(cleaned_data_dir / f"04.Ctrol_nonstress_OD_cleaned.csv", index_col=0)
         
         # 统一时间截断
         if time_max_h is not None:
-            time_max_min = time_max_h * 60.0
-            print(f"应用时间截断: {time_max_h} 小时 ({time_max_min} 分钟)")
-            self.mutant_stress = self.mutant_stress[self.mutant_stress.index <= time_max_min]
-            self.mutant_nonstress = self.mutant_nonstress[self.mutant_nonstress.index <= time_max_min]
-            self.ctrl_stress = self.ctrl_stress[self.ctrl_stress.index <= time_max_min]
-            self.ctrl_nonstress = self.ctrl_nonstress[self.ctrl_nonstress.index <= time_max_min]
-
-        # 统一 strip 列名，避免列名含多余空格导致匹配失败
-        for df in [self.mutant_stress, self.mutant_nonstress, self.ctrl_stress, self.ctrl_nonstress]:
-            df.columns = df.columns.str.strip()
+            print(f"应用时间截断: {time_max_h} 小时")
+            self.mutant_stress = self.mutant_stress[self.mutant_stress.index <= time_max_h]
+            self.mutant_nonstress = self.mutant_nonstress[self.mutant_nonstress.index <= time_max_h]
+            self.ctrl_stress = self.ctrl_stress[self.ctrl_stress.index <= time_max_h]
+            self.ctrl_nonstress = self.ctrl_nonstress[self.ctrl_nonstress.index <= time_max_h]
         
-        # 获取时间点
-        self.time_points = self.mutant_stress.index.values
+        # 时间已经是小时，不需要转换
+        self.time_points = self.mutant_stress.index.values.astype(float)
+        self.time_h = self.time_points
         
-        # 获取基因列表
-        self.genes = list(self.mutant_stress.columns)
+        # 获取基因列表（去除空格）
+        self.genes = [col.strip() for col in self.mutant_stress.columns]
         
         print(f"数据加载完成:")
-        print(f"- 时间点: {len(self.time_points)} 个 ({self.time_points[0]:.1f} - {self.time_points[-1]:.1f} 分钟)")
+        print(f"- 时间点: {len(self.time_points)} 个 ({self.time_points[0]:.1f} - {self.time_points[-1]:.1f} 小时)")
         print(f"- 基因数: {len(self.genes)} 个")
         
     def logistic_growth(self, t, K, r, t0):
@@ -124,10 +121,10 @@ class StressToleranceAnalyzer:
                 lag_time = time_clean[lag_idx[0]]
             
             # 生长曲线下面积 (AUC)
-            if hasattr(np, 'trapezoid'):
-                auc = np.trapezoid(od_clean, time_clean)
-            else:
+            try:
                 auc = np.trapz(od_clean, time_clean)
+            except AttributeError:
+                auc = np.trapezoid(od_clean, time_clean)
             
             return {
                 'final_od': final_od,
@@ -144,14 +141,9 @@ class StressToleranceAnalyzer:
             return None
     
     def find_control_column(self, gene):
-        """查找基因对应的对照组列名（精确匹配，避免子字符串误匹配）"""
-        gene = gene.strip()
+        """查找通用 VC (Vector Control) 对照组"""
         for col in self.ctrl_stress.columns:
-            # 列名格式: ctrol{N}-gene1;gene2;... 或 gene1;gene2;...
-            # 去除 ctrol{N}- 前缀后，按分号拆分做精确匹配
-            col_gene_part = col.split('-', 1)[-1] if '-' in col else col
-            col_genes = [g.strip() for g in col_gene_part.split(';')]
-            if gene in col_genes:
+            if 'VC' in col:
                 return col
         return None
     
@@ -166,8 +158,9 @@ class StressToleranceAnalyzer:
                 print(f"处理进度: {i+1}/{len(self.genes)}")
             
             try:
-                # 获取过表达组数据
-                gene_col = gene
+                # 获取该基因在过表达组的数据
+                gene_col = gene + '  ' if gene + '  ' in self.mutant_stress.columns else gene
+                
                 if gene_col not in self.mutant_stress.columns:
                     continue
                 

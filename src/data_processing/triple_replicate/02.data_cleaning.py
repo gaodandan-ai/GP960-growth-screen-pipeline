@@ -119,49 +119,51 @@ class DataCleaner:
                 print(f"文件不存在: {file_path}")
     
     def calculate_replicate_averages(self):
-        """计算所有文件中三个生物学重复的平均值"""
-        print("计算三个生物学重复的平均值...")
+        """计算所有文件中三个生物学重复的平均値，并输出突变组的重复间 CV"""
+        print("计算三个生物学重复的平均値...")
         
-        # 处理所有文件
+        # 用于存储突变组 CV 的字典 {file_key: DataFrame}
+        self.replicate_cv = {}
+        
         for file_key in self.od_data.keys():
             print(f"\n处理 {file_key}:")
             df = self.od_data[file_key]
-            
-            # 获取所有列名
             columns = df.columns.tolist()
             
             if file_key in ['mutant_stress', 'mutant_nonstress']:
                 # Mutant文件：标准格式 xxxx-1, xxxx-2, xxxx-3
                 gene_groups = {}
                 for col in columns:
-                    if '-' in col: #if col.startswith('Cgl') and '-' in col:
-                        # 提取基因名部分（去掉-1、-2、-3后缀）
-                        gene_name = col.rsplit('-', 1)[0]  # 从右边分割，取第一部分
+                    if '-' in col:
+                        gene_name = col.rsplit('-', 1)[0]
                         if gene_name not in gene_groups:
                             gene_groups[gene_name] = []
                         gene_groups[gene_name].append(col)
                 
                 print(f"  发现 {len(gene_groups)} 个基因")
                 
-                # 创建新的DataFrame存储平均值
                 averaged_data = pd.DataFrame(index=df.index)
+                cv_rows = {}  # gene -> mean_CV_across_timepoints
                 
-                # 对每个基因计算三个重复的平均值
                 for gene_name, replicate_cols in gene_groups.items():
-                    if len(replicate_cols) == 3:  # 确保有三个重复
-                        # 计算三个重复的平均值
-                        avg_values = df[replicate_cols].mean(axis=1)
-                        # 新列名不带编号，只保留基因名
-                        averaged_data[gene_name] = avg_values
-                    else:
+                    rep_df = df[replicate_cols]
+                    avg_values = rep_df.mean(axis=1)
+                    averaged_data[gene_name] = avg_values
+                    
+                    if len(replicate_cols) < 3:
                         print(f"  警告: 基因 {gene_name} 的重复数不是3个: {replicate_cols}")
-                        # 如果不是3个重复，仍然计算平均值
-                        avg_values = df[replicate_cols].mean(axis=1)
-                        averaged_data[gene_name] = avg_values
+                    
+                    # 计算 CV = std/mean，取所有时间点的平均 CV
+                    std_ts = rep_df.std(axis=1)
+                    mean_ts = rep_df.mean(axis=1).replace(0, np.nan)
+                    cv_ts = (std_ts / mean_ts.abs()).replace([np.inf, -np.inf], np.nan)
+                    cv_rows[gene_name] = cv_ts.mean()  # 该基因的平均 CV
+                
+                self.od_data[file_key] = averaged_data
+                self.replicate_cv[file_key] = pd.Series(cv_rows, name='mean_CV')
             
             elif file_key in ['ctrl_stress', 'ctrl_nonstress']:
-                # Control文件：特殊格式 ctrol1-genes;genes;..., ctrol2-genes;genes;..., ctrol3-genes;genes;...
-                # 按重复分组列名
+                # Control文件： ctrol1-genes;..., ctrol2-genes;..., ctrol3-genes;...
                 replicate_groups = {'ctrol1-': [], 'ctrol2-': [], 'ctrol3-': []}
                 
                 for col in columns:
@@ -179,58 +181,54 @@ class DataCleaner:
                 max_cols = max(len(cols) for cols in replicate_groups.values())
                 
                 for i in range(max_cols):
-                    # 获取对应位置的三个重复列
-                    replicate_cols = []
-                    for prefix in ['ctrol1-', 'ctrol2-', 'ctrol3-']:
-                        if i < len(replicate_groups[prefix]):
-                            replicate_cols.append(replicate_groups[prefix][i])
-                    
-                    if len(replicate_cols) == 3:  # 确保有三个重复
-                        # 计算三个重复的平均值
-                        avg_values = df[replicate_cols].mean(axis=1)
-                        # 使用第一个重复的列名（去掉ctrol1-前缀）
-                        col_name = replicate_groups['ctrol1-'][i].replace('ctrol1-', '')
-                        averaged_data[col_name] = avg_values
-                    else:
-                        print(f"  警告: 位置 {i} 只有 {len(replicate_cols)} 个重复")
-            
-            # 更新od_data中的数据
-            self.od_data[file_key] = averaged_data
-            
-            print(f"  原始列数: {len(columns)}")
-            print(f"  平均后列数: {len(averaged_data.columns)}")
-            print(f"  处理完成")
+                    replicate_cols = [
+                        replicate_groups[pfx][i]
+                        for pfx in ['ctrol1-', 'ctrol2-', 'ctrol3-']
+                        if i < len(replicate_groups[pfx])
+                    ]
+                    if len(replicate_cols) < 3:
+                        print(f"  警告: 位置 {i} 只有 {len(replicate_cols)} 个重复，跳过")
+                        continue
+                    avg_values = df[replicate_cols].mean(axis=1)
+                    col_name = replicate_groups['ctrol1-'][i].replace('ctrol1-', '')
+                    averaged_data[col_name] = avg_values
                 
-    def identify_low_od_genes(self, threshold=1.0):
-        """识别在任一条件下平均OD或最大OD小于threshold的基因"""
-        print(f"识别平均OD或最大OD < {threshold}的基因...")
-        
-        low_od_genes = set()
-        
-        for condition_name, data in self.od_data.items():
-            print(f"\n分析 {condition_name}:")
+                self.od_data[file_key] = averaged_data
             
-            # 计算每个基因的平均OD和最大OD
+            n_orig = len(columns)
+            n_avg  = len(self.od_data[file_key].columns)
+            print(f"  原始列数: {n_orig}  →  平均后列数: {n_avg}")
+    
+    def identify_low_od_genes(self, threshold=1.0):
+        """
+        识别在突变组中平均OD或最大OD小于 threshold 的基因。
+        注意：只基于突变组筛选，不包括对照组。
+        对照组在胁迫条件下 OD 偶尔低于阈值是正常现象，不应据此删除基因。
+        """
+        print(f"识别突变组中平均OD或最大OD < {threshold} 的基因...")
+
+        low_od_genes = set()
+        for condition_name in ['mutant_stress', 'mutant_nonstress']:
+            if condition_name not in self.od_data:
+                continue
+            data = self.od_data[condition_name]
+            print(f"\n  分析 {condition_name}:")
+
             avg_od = data.mean(axis=0)
             max_od = data.max(axis=0)
-            
-            # 找出平均OD或最大OD小于阈值的基因
-            low_avg_genes = avg_od[avg_od < threshold].index.tolist()
-            low_max_genes = max_od[max_od < threshold].index.tolist()
-            
-            condition_low_genes = set(low_avg_genes + low_max_genes)
-            low_od_genes.update(condition_low_genes)
-            
-            print(f"  平均OD < {threshold}的基因: {len(low_avg_genes)}")
-            print(f"  最大OD < {threshold}的基因: {len(low_max_genes)}")
-            print(f"  该条件下异常基因总数: {len(condition_low_genes)}")
-            
-            if len(condition_low_genes) > 0:
-                print(f"  前5个异常基因: {list(condition_low_genes)[:5]}")
-        
-        print(f"\n所有条件下异常基因总数: {len(low_od_genes)}")
+
+            low_avg = avg_od[avg_od < threshold].index.tolist()
+            low_max = max_od[max_od < threshold].index.tolist()
+            cond_low = set(low_avg + low_max)
+            low_od_genes.update(cond_low)
+
+            print(f"    平均OD < {threshold}: {len(low_avg)} 个基因")
+            print(f"    最大OD < {threshold}: {len(low_max)} 个基因")
+            print(f"    该条件下合计: {len(cond_low)} 个")
+
+        print(f"\n突变组低OD基因总数: {len(low_od_genes)}")
         return low_od_genes
-    
+
     def clean_goe_files(self, genes_to_remove):
         """清理01.02文件（GOE文件），直接删除整列"""
         print("清理GOE文件（01.02）...")
@@ -282,6 +280,22 @@ class DataCleaner:
             else:
                 print(f"警告: {file_key} 数据未加载")
     
+    def save_replicate_cv(self):
+        """Save replicate CV report for data quality assessment."""
+        if not hasattr(self, 'replicate_cv') or not self.replicate_cv:
+            return
+        cv_df = pd.DataFrame(self.replicate_cv).rename(
+            columns={'mutant_stress': 'CV_stress', 'mutant_nonstress': 'CV_nonstress'})
+        cv_file = self.output_dir / 'replicate_cv.csv'
+        cv_df.to_csv(cv_file)
+        print(f"\n重复间 CV 文件已保存: {cv_file}")
+        # 打印 CV 过高的基因提示
+        high_cv_thresh = 0.3
+        for col in cv_df.columns:
+            high = cv_df[cv_df[col] > high_cv_thresh][col]
+            if not high.empty:
+                print(f"  警告: {col} 中 {len(high)} 个基因的平均 CV > {high_cv_thresh:.0%}，建议检查实验重复性")
+
     def generate_cleaning_report(self, unavailable_genes, low_od_genes, total_genes_to_remove):
         """生成清理报告"""
         report_file = self.output_dir / "data_cleaning_report.txt"
@@ -293,7 +307,8 @@ class DataCleaner:
             f.write("清理规则:\n")
             f.write("1. 删除plate-gene-mapping.xlsx中available=False的基因\n")
             f.write("2. 对所有文件计算三个生物学重复的平均值\n")
-            f.write("3. 删除在任一条件下平均OD或最大OD小于1的基因\n")
+            f.write("3. 删除突变组中在任一条件下平均OD或最大OD小于阈值的基因\n")
+            f.write("   (对照组不参与此过滤，胁迫条件下对照OD偏低属正常)\n")
             f.write("4. GOE文件删除异常基因列，Control文件保留所有基因\n\n")
             
             f.write("清理结果:\n")
@@ -317,10 +332,7 @@ class DataCleaner:
             for name, file_path in self.file_paths.items():
                 if name in self.od_data:
                     final_cols = len(self.od_data[name].columns)
-                    if name in ['goe_stress', 'goe_nonstress']:
-                        f.write(f"{file_path.name}: 最终基因数 {final_cols}\n")
-                    else:
-                        f.write(f"{file_path.name}: 最终列数 {final_cols}\n")
+                    f.write(f"{file_path.name}: 最终基因数/列数 {final_cols}\n")
         
         print(f"清理报告保存到: {report_file}")
     
@@ -353,6 +365,9 @@ class DataCleaner:
         
         # 8. 生成清理报告
         self.generate_cleaning_report(unavailable_genes, low_od_genes, total_genes_to_remove)
+        
+        # 9. 保存重复间 CV
+        self.save_replicate_cv()
         
         print("\n数据清理完成!")
         return total_genes_to_remove
