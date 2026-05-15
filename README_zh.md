@@ -87,6 +87,24 @@ chmod +x src/pipline/single/single_thermal_all.bash
 bash src/pipline/triple/triple_thermal_k.bash
 ```
 
+## 完整工作流解析：以三重复实验为例
+
+以 `src/pipline/triple/triple_thermal_k.bash` 为例，流水线自动执行以下核心步骤：
+
+### 1. 环境与路径初始化
+脚本会自动识别项目根目录，并设置原始数据 (`data/raw`)、结果输出 (`data/results`) 和处理脚本 (`src/data_processing`) 的路径。
+
+### 2. 数据处理核心阶段
+- **Step 1: 预处理 (Preprocess)** - 解析 Excel 板图，将不同时间点的 OD 值与基因/条件映射，生成 Tidy CSV。
+- **Step 2: 数据清理 (Data Cleaning)** - 根据设定阈值（如 OD > 1.0）过滤生长不良或异常的孔位。
+- **Step 3: 适应性计算 (Fitness)** - 计算相对适应性 (RF) 和综合评分，并支持设置 `MAX_TIME` 时间窗口（如 30h）。
+- **Step 4: 生长曲线绘图 (Plotting)** - 为每个基因生成 stress vs non-stress 的对比生长曲线图。
+
+### 3. 特征提取与高级分析
+- **Step 5: 特征计算 (Full Features)** - 提取 Mu、AUC、Lag Phase 等 50 多个生长动力学特征。
+- **Step 6 & 7: 特征筛选与 RF 矩阵** - 自动分析特征相关性，生成基于关键特征的 RF 矩阵。
+- **Step 8, 9 & 10: 候选筛选与可视化** - 自动筛选各指标下的 Top 5 菌株，绘制 Top 菌株生长曲线图及综合 Dotplot。
+
 ---
 
 ## 详细工作流说明 (手动分步执行)

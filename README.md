@@ -87,6 +87,24 @@ chmod +x src/pipline/single/single_thermal_all.bash
 bash src/pipline/triple/triple_thermal_k.bash
 ```
 
+## Full Workflow Breakdown: Triple-Replicate Example
+
+Using `src/pipline/triple/triple_thermal_k.bash` as a reference, the pipeline automates the following core stages:
+
+### 1. Environment & Path Initialization
+The script automatically detects the repository root and configures paths for raw data (`data/raw`), output results (`data/results`), and processing scripts (`src/data_processing`).
+
+### 2. Core Data Processing
+- **Step 1: Preprocess** - Parses Excel plate maps, mapping OD values to genes/conditions, and generates Tidy CSV files.
+- **Step 2: Data Cleaning** - Filters out poor growth or abnormal wells based on set thresholds (e.g., OD > 1.0).
+- **Step 3: Fitness Calculation** - Calculates Relative Fitness (RF) and comprehensive scores, with support for `MAX_TIME` constraints (e.g., 30h).
+- **Step 4: Growth Curve Plotting** - Generates comparative growth curves (Stress vs. Non-stress) for every gene.
+
+### 3. Feature Extraction & Advanced Analysis
+- **Step 5: Full Features** - Extracts 50+ kinetic features including growth rate (Mu), AUC, and Lag Phase.
+- **Step 6 & 7: Feature Selection & RF Matrix** - Analyzes feature correlations and generates a finalized RF matrix based on key selected features.
+- **Step 8, 9 & 10: Candidate Screening & Visualization** - Automatically screens Top 5 strains for each metric, plots their growth curves, and generates summary Dotplots.
+
 ---
 
 ## Detailed Workflow (Manual Execution)
