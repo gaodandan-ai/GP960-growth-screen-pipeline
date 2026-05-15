@@ -62,7 +62,7 @@ GP960-growth-screen-pipeline/
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/GP960-growth-screen-pipeline.git
+git clone https://github.com/gaodandan-ai/GP960-growth-screen-pipeline.git
 cd GP960-growth-screen-pipeline
 conda env create -f environmental.yml
 conda activate gp960_analysis
