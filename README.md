@@ -68,9 +68,33 @@ conda env create -f environmental.yml
 conda activate gp960_analysis
 ```
 
-## Workflow Example (Single-Replicate)
+## Quick Start (Automatic Workflow)
+
+To simplify operations, the pipeline provides pre-configured Bash scripts that complete all steps from data preprocessing to plotting in one go.
+
+### Single-Replicate Example
+```bash
+# Grant execution permissions
+chmod +x src/pipline/single/single_thermal_all.bash
+
+# Run the complete workflow
+./src/pipline/single/single_thermal_all.bash
+```
+
+### Triple-Replicate Example
+```bash
+# Run the complete workflow
+bash src/pipline/triple/triple_thermal_k.bash
+```
+
+---
+
+## Detailed Workflow (Manual Execution)
+
+If you need to customize parameters or run specific steps only, you can execute the Python scripts in the following order:
 
 ### 1. Preprocess
+Convert raw Excel files into CSV format.
 ```bash
 python src/data_processing/single_replicate/01.pp_rawdata.py \
     --rawdata_dir data/raw/highmethanol \
@@ -80,6 +104,7 @@ python src/data_processing/single_replicate/01.pp_rawdata.py \
 ```
 
 ### 2. Clean
+Filter out low-quality measurements.
 ```bash
 python src/data_processing/single_replicate/02.data_cleaning.py \
     --input_dir data/results/01.ppraw_data \
@@ -89,6 +114,7 @@ python src/data_processing/single_replicate/02.data_cleaning.py \
 ```
 
 ### 3. Analyze Fitness
+Calculate RF and tolerance scores.
 ```bash
 python src/data_processing/single_replicate/03.calculate_fitness.py \
     --input_dir data/results/02.cleaned_data \

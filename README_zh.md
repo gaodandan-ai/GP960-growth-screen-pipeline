@@ -68,9 +68,33 @@ conda env create -f environmental.yml
 conda activate gp960_analysis
 ```
 
-## 工作流示例 (单重复)
+## 快速开始 (自动化工作流)
+
+为了简化操作，流水线提供了预配置的 Bash 脚本，可以一键完成从数据预处理到绘图的所有步骤。
+
+### 单重复 (Single-Replicate) 示例
+```bash
+# 赋予执行权限
+chmod +x src/pipline/single/single_thermal_all.bash
+
+# 执行完整工作流
+./src/pipline/single/single_thermal_all.bash
+```
+
+### 三重复 (Triple-Replicate) 示例
+```bash
+# 执行完整工作流
+bash src/pipline/triple/triple_thermal_k.bash
+```
+
+---
+
+## 详细工作流说明 (手动分步执行)
+
+如果您需要自定义参数或仅运行特定步骤，可以按以下顺序执行 Python 脚本：
 
 ### 1. 预处理 (Preprocess)
+将原始 Excel 文件转换为 CSV 格式。
 ```bash
 python src/data_processing/single_replicate/01.pp_rawdata.py \
     --rawdata_dir data/raw/highmethanol \
@@ -80,6 +104,7 @@ python src/data_processing/single_replicate/01.pp_rawdata.py \
 ```
 
 ### 2. 数据清理 (Clean)
+过滤低质量测量值。
 ```bash
 python src/data_processing/single_replicate/02.data_cleaning.py \
     --input_dir data/results/01.ppraw_data \
@@ -89,6 +114,7 @@ python src/data_processing/single_replicate/02.data_cleaning.py \
 ```
 
 ### 3. 适应性分析 (Analyze Fitness)
+计算 RF 和耐受性得分。
 ```bash
 python src/data_processing/single_replicate/03.calculate_fitness.py \
     --input_dir data/results/02.cleaned_data \
